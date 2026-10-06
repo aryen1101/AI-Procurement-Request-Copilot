@@ -14,6 +14,15 @@ class RunTelemetry(BaseModel):
     llm_calls: int | None = None
     tool_calls: int | None = None
     tool_names: list[str] = Field(default_factory=list)
+    # Extensions (optional, backwards compatible with the starter contract)
+    architecture: str | None = None
+    mode: str | None = Field(default=None, description="'llm' or 'deterministic_fallback'")
+    models_used: list[str] = Field(default_factory=list)
+    guard_tool_calls: int = Field(default=0, description="Tool calls the orchestrator made because the agent skipped them")
+    ungrounded_evidence_dropped: int = Field(default=0, description="LLM evidence items rejected by the grounding check")
+    llm_overrides_blocked: int = Field(default=0, description="Times the LLM tried to de-escalate below the deterministic baseline")
+    llm_errors: list[str] = Field(default_factory=list)
+    latency_ms: float | None = None
 
 
 class ProcurementDecision(BaseModel):
@@ -26,21 +35,11 @@ class ProcurementDecision(BaseModel):
     next_step: str
     human_review_required: bool = True
     telemetry: RunTelemetry | None = None
+    # Extensions (optional)
+    recommendation_category: str | None = None
+    rationale: str | None = None
+    clarifying_questions: list[str] = Field(default_factory=list)
 
 
 Architecture = Literal["single", "staged"]
 
-# Suggested approval names for consistency in evaluation:
-# Manager, Department Head, Procurement, Finance, CFO, Security, Privacy, Legal
-#
-# Suggested risk-flag taxonomy (you may add others):
-# existing_tool_overlap
-# budget_insufficient
-# security_review_required
-# privacy_review_required
-# legal_review_required
-# vendor_review_expired
-# conflicting_vendor_evidence
-# vendor_risk_unavailable
-# prompt_injection_detected
-# missing_information

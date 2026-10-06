@@ -134,6 +134,24 @@ def check_mock_api() -> None:
     ok("Mock vendor-risk API checks passed")
 
 
+def check_copilot() -> None:
+    from unittest.mock import patch
+    from tests.helpers import in_process_vendor_api
+    from src.solution import process_request
+    from src.data_access import get_request
+    from src import config
+
+    with patch("src.tools._api_get_vendor_risk", in_process_vendor_api):
+        d = process_request(get_request("REQ-1001"), "rules")
+    if d.required_approvals != ["Manager"] or not d.human_review_required:
+        fail("Copilot rules-only run returned an unexpected decision for REQ-1001")
+    ok(f"Copilot end-to-end (rules only): {d.recommendation} via {d.telemetry.tool_calls} tool calls")
+    if config.openrouter_api_key():
+        ok(f"OPENROUTER_API_KEY set; models: {', '.join(config.model_chain())}")
+    else:
+        print("[WARN] OPENROUTER_API_KEY not set - agents will use the deterministic fallback")
+
+
 def main() -> None:
     print("FDE Assessment 3 - starter pack pre-flight\n")
     check_python()
@@ -141,8 +159,9 @@ def main() -> None:
     check_data()
     check_contract_and_evals()
     check_mock_api()
+    check_copilot()
     print("\nPRE-FLIGHT PASSED")
-    print("Next: copy .env.example to .env, add your model credentials, then run: python run_local.py")
+    print("Next: copy .env.example to .env, add OPENROUTER_API_KEY, then run: python run_local.py")
 
 
 if __name__ == "__main__":
