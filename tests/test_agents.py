@@ -1,4 +1,4 @@
-"""Live agent tests against the real OpenRouter free model.
+"""Live agent tests against the real Groq free-tier model.
 """
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ from src.llm import extract_json
 from src.solution import process_request
 from tests.helpers import in_process_vendor_api
 
-LIVE = bool(config.openrouter_api_key()) and config.llm_mode() != "off"
+LIVE = bool(config.groq_api_key()) and config.llm_mode() != "off"
 
 
-@unittest.skipUnless(LIVE, "OPENROUTER_API_KEY not set (add it to .env to run live agent tests)")
+@unittest.skipUnless(LIVE, "GROQ_API_KEY not set (add it to .env to run live agent tests)")
 class LiveAgentTests(unittest.TestCase):
     def setUp(self):
         p = patch("src.tools._api_get_vendor_risk", in_process_vendor_api)
@@ -25,7 +25,7 @@ class LiveAgentTests(unittest.TestCase):
         t = d.telemetry
         self.assertEqual(t.mode, "llm", f"LLM did not produce a usable answer: {t.llm_errors}")
         self.assertGreaterEqual(t.llm_calls, 2 if architecture == "staged" else 1)
-        self.assertTrue(all(m.endswith(":free") for m in config.model_chain()))
+        self.assertTrue(config.model_chain())
         self.assertTrue(d.human_review_required)
         # every evidence item cites a tool that actually ran in this request
         self.assertTrue(all(e.source in t.tool_names for e in d.evidence))

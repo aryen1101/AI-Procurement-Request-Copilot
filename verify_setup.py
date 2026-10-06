@@ -146,10 +146,10 @@ def check_copilot() -> None:
     if d.required_approvals != ["Manager"] or not d.human_review_required:
         fail("Copilot rules-only run returned an unexpected decision for REQ-1001")
     ok(f"Copilot end-to-end (rules only): {d.recommendation} via {d.telemetry.tool_calls} tool calls")
-    if config.openrouter_api_key():
-        ok(f"OPENROUTER_API_KEY set; models: {', '.join(config.model_chain())}")
+    if config.groq_api_key():
+        ok(f"GROQ_API_KEY set; models: {', '.join(config.model_chain())}")
     else:
-        print("[WARN] OPENROUTER_API_KEY not set - agents will use the deterministic fallback")
+        print("[WARN] GROQ_API_KEY not set - agents will use the deterministic fallback")
 
 
 def main() -> None:
@@ -161,7 +161,7 @@ def main() -> None:
     check_mock_api()
     check_copilot()
     print("\nPRE-FLIGHT PASSED")
-    print("Next: copy .env.example to .env, add OPENROUTER_API_KEY, then run: python run_local.py")
+    print("Next: copy .env.example to .env, add GROQ_API_KEY, then run: python run_local.py")
 
 
 if __name__ == "__main__":

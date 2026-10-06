@@ -54,9 +54,9 @@ architecture = st.sidebar.radio(
     "Architecture", ["single", "staged", "rules"], horizontal=True,
     format_func={"single": "A: single", "staged": "B: staged", "rules": "Rules only"}.get,
 )
-key_set = bool(config.openrouter_api_key()) and config.llm_mode() != "off"
+key_set = bool(config.groq_api_key()) and config.llm_mode() != "off"
 st.sidebar.caption(
-    f"LLM: {'OpenRouter ' + config.model_chain()[0] if key_set else 'not configured - deterministic fallback'}\n\n"
+    f"LLM: {'Groq ' + config.model_chain()[0] if key_set else 'not configured - deterministic fallback'}\n\n"
     f"Policy reference date: {config.REFERENCE_DATE}"
 )
 

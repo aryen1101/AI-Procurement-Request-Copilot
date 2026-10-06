@@ -1,8 +1,8 @@
-"""OpenRouter client restricted to free models (model ids ending in ':free').
+"""Groq client (free tier).
 
 Uses the OpenAI-compatible /chat/completions endpoint over plain HTTP, so no provider SDK
 is required. Tool use is implemented with a JSON protocol in the prompt (see src/agent_loop.py)
-because free models differ in native function-calling support.
+so any model in the fallback chain works, whatever its native function-calling support.
 """
 from __future__ import annotations
 
@@ -40,16 +40,16 @@ class ChatModel(Protocol):
     def chat(self, messages: list[dict]) -> str: ...
 
 
-class OpenRouterChat:
+class GroqChat:
     def __init__(self, api_key: str | None = None, models: list[str] | None = None, temperature: float = 0.0):
-        self.api_key = api_key or config.openrouter_api_key()
+        self.api_key = api_key or config.groq_api_key()
         self.models = models or config.model_chain()
         self.temperature = temperature
         self.stats = LLMStats()
         if not self.api_key:
-            raise LLMUnavailable("OPENROUTER_API_KEY is not set")
+            raise LLMUnavailable("GROQ_API_KEY is not set")
         if not self.models:
-            raise LLMUnavailable("No ':free' OpenRouter model configured")
+            raise LLMUnavailable("No Groq model configured")
 
     def _cache_path(self, model: str, messages: list[dict]) -> Path:
         key = hashlib.sha256(json.dumps([model, messages], sort_keys=True).encode()).hexdigest()[:32]
@@ -68,12 +68,10 @@ class OpenRouterChat:
             for attempt in range(3):
                 try:
                     resp = requests.post(
-                        f"{config.OPENROUTER_BASE_URL}/chat/completions",
+                        f"{config.GROQ_BASE_URL}/chat/completions",
                         headers={
                             "Authorization": f"Bearer {self.api_key}",
                             "Content-Type": "application/json",
-                            "HTTP-Referer": "http://localhost:8501",
-                            "X-Title": "AI Procurement Request Copilot",
                         },
                         json={"model": model, "messages": messages, "temperature": self.temperature},
                         timeout=config.llm_timeout_seconds(),
@@ -111,13 +109,13 @@ class OpenRouterChat:
                     CACHE_DIR.mkdir(parents=True, exist_ok=True)
                     self._cache_path(model, messages).write_text(json.dumps({"content": content}), encoding="utf-8")
                 return content
-        raise LLMUnavailable(f"All free models failed; last error: {last_error}")
+        raise LLMUnavailable(f"All Groq models failed; last error: {last_error}")
 
 
 def get_chat_model() -> ChatModel:
     if config.llm_mode() == "off":
         raise LLMUnavailable("LLM_MODE=off")
-    return OpenRouterChat()
+    return GroqChat()
 
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)

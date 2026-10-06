@@ -11,23 +11,23 @@ SECURITY_REVIEW_VALID_DAYS = 365
 
 VENDOR_RISK_BASE_URL = os.getenv("VENDOR_RISK_BASE_URL", "http://127.0.0.1:8001").rstrip("/")
 
-OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
-DEFAULT_MODEL = "google/gemma-4-31b-it:free"
-DEFAULT_FALLBACK_MODELS = "nvidia/nemotron-3-super-120b-a12b:free,google/gemma-4-26b-a4b-it:free"
+GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
+DEFAULT_MODEL = "openai/gpt-oss-120b"
+DEFAULT_FALLBACK_MODELS = "llama-3.3-70b-versatile,llama-3.1-8b-instant"
 
 
-def openrouter_api_key() -> str | None:
-    return os.getenv("OPENROUTER_API_KEY") or None
+def groq_api_key() -> str | None:
+    return os.getenv("GROQ_API_KEY") or None
 
 
 def model_chain() -> list[str]:
-    """Primary model first, then fallbacks. Only ':free' models are accepted (assignment constraint)."""
-    primary = os.getenv("OPENROUTER_MODEL", DEFAULT_MODEL).strip()
-    fallbacks = os.getenv("OPENROUTER_FALLBACK_MODELS", DEFAULT_FALLBACK_MODELS)
+    """Primary model first, then fallbacks (all available on the Groq free tier)."""
+    primary = os.getenv("GROQ_MODEL", DEFAULT_MODEL).strip()
+    fallbacks = os.getenv("GROQ_FALLBACK_MODELS", DEFAULT_FALLBACK_MODELS)
     chain: list[str] = []
     for name in [primary, *fallbacks.split(",")]:
         name = name.strip()
-        if name and name.endswith(":free") and name not in chain:
+        if name and name not in chain:
             chain.append(name)
     return chain
 

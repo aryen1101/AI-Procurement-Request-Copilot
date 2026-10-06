@@ -81,7 +81,7 @@ def main() -> None:
 
     RESULTS.mkdir(exist_ok=True)
     rows: list[dict] = []
-    print(f"LLM mode={config.llm_mode()}  key set={bool(config.openrouter_api_key())}  models={config.model_chain()}")
+    print(f"LLM mode={config.llm_mode()}  key set={bool(config.groq_api_key())}  models={config.model_chain()}")
     for arch in args.architectures:
         print(f"\n=== architecture: {arch} ===")
         decisions = []
