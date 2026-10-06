@@ -120,13 +120,21 @@ def build_decision(
             canon = next((x for x in APPROVAL_ORDER if x.lower() == str(a).strip().lower()), None)
             if canon:
                 approvals.add(canon)
+        # The policy engine already decided whether a same-vendor catalog match is an extension of the
+        # existing contract (e.g. extra seats) rather than a competing tool; the LLM may not re-add it.
+        vendor = str(req.get("vendor_name") or "").strip().lower()
+        overlap = llm_final.get("overlap_assessment") or {}
+        existing = str(overlap.get("existing_tool") or "").lower() if isinstance(overlap, dict) else ""
+        same_vendor_extension = "existing_tool_overlap" not in policy.risk_flags and (
+            any(f.source == "search_software_catalog" and "extends existing" in f.detail for f in policy.findings)
+            or (vendor and vendor in existing))
         for fl in llm_final.get("additional_risk_flags") or []:
-            if str(fl) in KNOWN_FLAGS:
+            if str(fl) in KNOWN_FLAGS and not (fl == "existing_tool_overlap" and same_vendor_extension):
                 flags.add(str(fl))
         if llm_final.get("prompt_injection_suspected") is True:
             flags.add("prompt_injection_detected")
-        overlap = llm_final.get("overlap_assessment") or {}
-        if isinstance(overlap, dict) and overlap.get("overlaps") is True and overlap.get("existing_tool"):
+        if isinstance(overlap, dict) and overlap.get("overlaps") is True and overlap.get("existing_tool") \
+                and not same_vendor_extension:
             flags.add("existing_tool_overlap")
         rationale = llm_final.get("rationale") or None
         questions = [str(q) for q in (llm_final.get("clarifying_questions") or []) if str(q).strip()][:5]
