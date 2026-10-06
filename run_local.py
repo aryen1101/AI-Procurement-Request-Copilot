@@ -68,7 +68,7 @@ def main() -> None:
             print("Streamlit is not installed. Run: pip install -r requirements.txt")
             print("The mock API is still running. Press Ctrl+C to stop.")
         else:
-            print("Starting starter UI on http://127.0.0.1:8501 ...")
+            print("Starting UI - open http://127.0.0.1:8501 in your browser (Ctrl+C stops everything) ...")
             procs.append(
                 start(
                     [
@@ -79,6 +79,12 @@ def main() -> None:
                         "app.py",
                         "--server.port",
                         "8501",
+                        # Starter-pack fix: on a fresh machine Streamlit blocks on an interactive
+                        # "Email:" prompt, so the one-command start never reached the UI.
+                        "--server.headless",
+                        "true",
+                        "--browser.gatherUsageStats",
+                        "false",
                     ]
                 )
             )

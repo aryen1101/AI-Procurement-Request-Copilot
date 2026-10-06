@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.contracts import ProcurementDecision
+from src.mock_server import ensure_mock_api
 from src.solution import handle_request
 
 
@@ -67,6 +68,7 @@ def main() -> None:
     parser.add_argument('--architecture', choices=['single','staged'], default='single')
     args = parser.parse_args()
 
+    ensure_mock_api()  # starter-pack fix: runner previously needed the API started by hand
     cases = json.loads((ROOT/'evals'/'public_cases.json').read_text(encoding='utf-8'))
     rows = []
     print(f"\nPublic evaluation - architecture={args.architecture}\n")
@@ -80,13 +82,15 @@ def main() -> None:
             failures = evaluate(decision, case['expectations'])
             passed = not failures
             tel = decision.telemetry
-            print(f"{'PASS' if passed else 'FAIL'}  {case['case_id']}  {case['title']}  ({latency_ms:.0f} ms)")
+            mode = f", {tel.mode}, llm={tel.llm_calls}, tools={tel.tool_calls}" if tel else ""
+            print(f"{'PASS' if passed else 'FAIL'}  {case['case_id']}  {case['title']}  ({latency_ms:.0f} ms{mode})")
             for f in failures:
                 print(f"      - {f}")
             rows.append({
                 'case_id':case['case_id'], 'request_id':case['request_id'], 'architecture':args.architecture,
                 'passed_minimum_checks':passed, 'latency_ms':round(latency_ms,1),
                 'llm_calls': tel.llm_calls if tel else '', 'tool_calls': tel.tool_calls if tel else '',
+                'mode': tel.mode if tel else '',
                 'failures':' | '.join(failures)
             })
         except NotImplementedError as exc:
@@ -98,11 +102,12 @@ def main() -> None:
             rows.append({
                 'case_id':case['case_id'], 'request_id':case['request_id'], 'architecture':args.architecture,
                 'passed_minimum_checks':False, 'latency_ms':round(latency_ms,1),
-                'llm_calls':'', 'tool_calls':'', 'failures':f"ERROR: {type(exc).__name__}: {exc}"
+                'llm_calls':'', 'tool_calls':'', 'mode':'', 'failures':f"ERROR: {type(exc).__name__}: {exc}"
             })
 
     if rows:
-        out = ROOT/'evals'/f"results_{args.architecture}.csv"
+        (ROOT/'evals'/'results').mkdir(exist_ok=True)
+        out = ROOT/'evals'/'results'/f"public_{args.architecture}.csv"
         with out.open('w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=rows[0].keys())
             writer.writeheader(); writer.writerows(rows)
