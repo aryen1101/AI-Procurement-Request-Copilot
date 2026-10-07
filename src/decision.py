@@ -2,7 +2,8 @@
 
 Merge rules - the LLM can only make the outcome *safer*:
   * approvals / risk flags  = policy engine  UNION  valid LLM additions
-  * category                = most restrictive of policy baseline and LLM suggestion
+  * category                = most restrictive of policy baseline and LLM suggestion, but an LLM category
+                              only counts when a risk flag (or missing information) backs it
   * missing information     = policy engine only (prevents invented gaps on complete requests)
   * evidence                = deterministic findings + LLM items that pass the grounding check
   * human_review_required   = always True
@@ -25,6 +26,13 @@ FLAG_TO_APPROVAL = {
     "legal_review_required": "Legal",
     "budget_insufficient": "Finance",
     "budget_unverified": "Finance",
+}
+# Flags that justify each restrictive category (mirrors policy_engine.baseline_category).
+CATEGORY_TRIGGERS = {
+    "manual_review_unverified": {"vendor_risk_unavailable", "vendor_risk_record_missing", "conflicting_vendor_evidence"},
+    "budget_exception_review": {"budget_insufficient", "budget_unverified"},
+    "specialist_review": {"security_review_required", "privacy_review_required", "legal_review_required"},
+    "reuse_existing_tool": {"existing_tool_overlap"},
 }
 APPROVAL_TO_FLAG = {"Security": "security_review_required", "Privacy": "privacy_review_required", "Legal": "legal_review_required"}
 
@@ -156,6 +164,11 @@ def build_decision(
             flags.add(fl)
 
     ordered_approvals = [a for a in APPROVAL_ORDER if a in approvals]
+    # The LLM escalates by citing a reason (a flag), not by picking a stricter label on its own.
+    if llm_category == "request_clarification" and not policy.missing_information:
+        llm_category = None
+    elif llm_category in CATEGORY_TRIGGERS and not flags & CATEGORY_TRIGGERS[llm_category]:
+        llm_category = None
     base = baseline_category(flags, policy.missing_information)
     category = most_restrictive(base, llm_category)
     if llm_category in CATEGORY_ORDER and CATEGORY_ORDER.index(llm_category) > CATEGORY_ORDER.index(base):

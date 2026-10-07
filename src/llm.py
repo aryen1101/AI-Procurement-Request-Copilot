@@ -20,6 +20,8 @@ from src import config
 
 ROOT = Path(__file__).resolve().parents[1]
 CACHE_DIR = ROOT / ".cache" / "llm"
+MAX_ROUNDS = 5  # passes over the model chain before giving up
+MAX_RETRY_WAIT_SECONDS = 60.0
 
 
 class LLMUnavailable(Exception):
@@ -56,16 +58,21 @@ class GroqChat:
         return CACHE_DIR / f"{key}.json"
 
     def chat(self, messages: list[dict]) -> str:
-        last_error = "no attempt"
-        for model in self.models:
-            if config.llm_cache_enabled():
+        if config.llm_cache_enabled():
+            for model in self.models:
                 path = self._cache_path(model, messages)
                 if path.exists():
                     self.stats.calls += 1
                     self.stats.cache_hits += 1
                     self.stats.models_used.append(model)
                     return json.loads(path.read_text(encoding="utf-8"))["content"]
-            for attempt in range(3):
+        # Groq's free tier limits tokens per minute *per model*, so on a 429 move straight to the next
+        # model and only sleep (for the Retry-After Groq asks for) once every model is rate limited.
+        last_error = "no attempt"
+        models = list(self.models)
+        for round_no in range(MAX_ROUNDS):
+            waits: list[float] = []
+            for model in list(models):
                 try:
                     resp = requests.post(
                         f"{config.GROQ_BASE_URL}/chat/completions",
@@ -79,37 +86,67 @@ class GroqChat:
                 except requests.RequestException as exc:
                     last_error = f"{model}: {type(exc).__name__}"
                     self.stats.errors.append(last_error)
-                    break  # network problem -> try next model
+                    waits.append(2.0 * (round_no + 1))
+                    continue
                 if resp.status_code == 429 or resp.status_code >= 500:
                     last_error = f"{model}: HTTP {resp.status_code}"
                     self.stats.errors.append(last_error)
-                    if attempt < 2:
-                        retry_after = resp.headers.get("Retry-After")
-                        wait = float(retry_after) if retry_after and retry_after.replace(".", "").isdigit() else 2.0 * (attempt + 1)
-                        time.sleep(min(wait, 10.0))
-                        continue
-                    break
+                    retry_after = resp.headers.get("Retry-After", "")
+                    waits.append(float(retry_after) if retry_after.replace(".", "").isdigit() else 2.0 * (round_no + 1))
+                    continue
+                recovered = _recover_tool_call(resp) if resp.status_code == 400 else None
+                if recovered:
+                    self.stats.calls += 1
+                    self.stats.models_used.append(model)
+                    return recovered
                 if resp.status_code >= 400:
                     last_error = f"{model}: HTTP {resp.status_code} {resp.text[:160]}"
                     self.stats.errors.append(last_error)
-                    break  # bad request / model gone -> next model
+                    if resp.status_code in (404, 413):
+                        models.remove(model)  # model not available to this key / prompt too large for it
+                    continue
                 body = resp.json()
                 if "error" in body:
                     last_error = f"{model}: {str(body['error'])[:160]}"
                     self.stats.errors.append(last_error)
-                    break
-                content = (body.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+                    continue
+                message = (body.get("choices") or [{}])[0].get("message") or {}
+                content = message.get("content") or ""
+                if not content.strip() and message.get("tool_calls"):
+                    # gpt-oss sometimes emits a native tool call instead of the JSON protocol; translate it.
+                    content = json.dumps({"tool_calls": [
+                        {"name": (c.get("function") or {}).get("name"), "args": (c.get("function") or {}).get("arguments") or "{}"}
+                        for c in message["tool_calls"]]})
                 if not content.strip():
                     last_error = f"{model}: empty response"
                     self.stats.errors.append(last_error)
-                    break
+                    continue
                 self.stats.calls += 1
                 self.stats.models_used.append(body.get("model", model))
                 if config.llm_cache_enabled():
                     CACHE_DIR.mkdir(parents=True, exist_ok=True)
                     self._cache_path(model, messages).write_text(json.dumps({"content": content}), encoding="utf-8")
                 return content
+            if not waits or not models or round_no == MAX_ROUNDS - 1:
+                break
+            time.sleep(min(min(waits), MAX_RETRY_WAIT_SECONDS))
         raise LLMUnavailable(f"All Groq models failed; last error: {last_error}")
+
+
+def _recover_tool_call(resp: requests.Response) -> str | None:
+    """gpt-oss sometimes answers with a native tool call, which Groq rejects with code 'tool_use_failed'
+    but echoes back in 'failed_generation'. Translate it into our JSON tool protocol instead of failing."""
+    try:
+        err = resp.json().get("error") or {}
+        if err.get("code") != "tool_use_failed":
+            return None
+        call = json.loads(err.get("failed_generation") or "")
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(call, dict) or not call.get("name"):
+        return None
+    name = str(call["name"]).split(".")[-1]  # e.g. "functions.get_vendor_registry"
+    return json.dumps({"tool_calls": [{"name": name, "args": call.get("arguments", call.get("parameters", {}))}]})
 
 
 def get_chat_model() -> ChatModel:
